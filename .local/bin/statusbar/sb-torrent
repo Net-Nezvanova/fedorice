@@ -1,6 +1,11 @@
 #!/bin/sh
 
-transmission-remote -l | grep % |
+# The daemon is started on demand by td-toggle, so it is normally not running.
+# Without this guard transmission-remote prints a connection error to stderr on
+# every bar refresh, which floods the session log.
+pidof transmission-daemon >/dev/null 2>&1 || exit 0
+
+transmission-remote -l 2>/dev/null | grep % |
 	sed " # The letters are for sorting and will not appear.
 	s/.*Stopped.*/A 🛑/;
 	s/.*Seeding.*/Z 🌱/;

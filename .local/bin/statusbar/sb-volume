@@ -13,7 +13,11 @@ case $BLOCK_BUTTON in
 	6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
 esac
 
-vol="$(wpctl get-volume @DEFAULT_AUDIO_SINK@)"
+# Exit quietly when there is no audio sink at all. In a container, or before
+# wireplumber has settled, wpctl fails and the empty result used to reach the
+# printf below as a "printf: : invalid number" error on every bar refresh.
+vol="$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null)" || exit 0
+[ -n "$vol" ] || exit 0
 
 # If muted, print 🔇 and exit.
 [ "$vol" != "${vol%\[MUTED\]}" ] && echo 🔇 && exit
