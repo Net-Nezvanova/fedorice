@@ -11,7 +11,11 @@ cleanup() {
 	rm "$FIFO_UEBERZUG"
 }
 
-if [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ]; then
+# The ueberzug check is load-bearing on Fedora: ueberzugpp is built from source
+# and that build is allowed to fail. Without this guard, `exec 3>"$FIFO"` below
+# blocks forever waiting for a reader that never starts, and lf never opens at
+# all -- a much worse outcome than losing image previews.
+if [ -n "$SSH_CLIENT" ] || [ -n "$SSH_TTY" ] || ! command -v ueberzug >/dev/null 2>&1; then
 	lf "$@"
 else
 	[ ! -d "$HOME/.cache/lf" ] && mkdir -p "$HOME/.cache/lf"

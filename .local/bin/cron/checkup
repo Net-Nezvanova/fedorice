@@ -4,14 +4,21 @@
 
 notify-send "📦 Repository Sync" "Checking for package updates..."
 
-sudo pacman -Syyuw --noconfirm || notify-send "Error downloading updates.
+# The arguments below must match the line in
+# /etc/sudoers.d/01-larbs-cmds-without-password byte for byte. sudo matches
+# commands literally, so reordering the flags makes this prompt for a password
+# in a cronjob that has no terminal to type into.
+sudo dnf upgrade --downloadonly -y || notify-send "Error downloading updates.
 
-Check your internet connection, if pacman is already running, or run update manually to see errors."
+Check your internet connection, whether another dnf transaction is already running, or run the upgrade manually to see the errors."
 pkill -RTMIN+8 "${STATUSBAR:-dwmblocks}"
 
-if pacman -Qu | grep -v "\[ignored\]"
-then
-	notify-send "🎁 Repository Sync" "Updates available. Click statusbar icon (📦) for update."
-else
-	notify-send "📦 Repository Sync"  "Sync complete. No new packages for update."
-fi
+# dnf check-update exits 100 when updates ARE available, 0 when there are none,
+# and 1 on error. Treating any non-zero status as "updates available" would
+# report every metadata failure as a pending upgrade, so test for 100 exactly.
+dnf -q check-update >/dev/null 2>&1
+case $? in
+	100) notify-send "🎁 Repository Sync" "Updates available. Click statusbar icon (📦) for update." ;;
+	0) notify-send "📦 Repository Sync" "Sync complete. No new packages for update." ;;
+	*) notify-send "📦 Repository Sync" "Could not check for updates. See if dnf runs by hand." ;;
+esac

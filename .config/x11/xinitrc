@@ -8,6 +8,19 @@
 # (login screen) and so they are needed there. To prevent doubling up commands,
 # I source them here with the line below.
 
+# Fedora: xinit runs the system /etc/X11/xinit/xinitrc only when the user has
+# no xinitrc of their own, so these snippets would otherwise never run. The one
+# that matters is 50-systemd-user.sh, which imports DISPLAY and XAUTHORITY into
+# the systemd user manager -- without it anything D-Bus-activated (dunst,
+# gnome-keyring, the portals) starts with no DISPLAY and misbehaves in ways
+# that are very hard to attribute. localuser.sh relaxes xhost for this user.
+if [ -d /etc/X11/xinit/xinitrc.d ]; then
+	for f in /etc/X11/xinit/xinitrc.d/?*.sh; do
+		[ -x "$f" ] && . "$f"
+	done
+	unset f
+fi
+
 if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/x11/xprofile" ]; then
 	. "${XDG_CONFIG_HOME:-$HOME/.config}/x11/xprofile"
 else
@@ -15,4 +28,11 @@ else
 fi
 # Activate dbus variables
 dbus-update-activation-environment --all
-dbus-launch ssh-agent dwm
+
+# Fedora already has a systemd user session bus (dbus-broker at
+# $XDG_RUNTIME_DIR/bus, exported by pam_systemd long before this file runs).
+# Upstream's `dbus-launch` here is an Artix/runit accommodation: on systemd it
+# starts a second, competing bus, after which dunst, gnome-keyring and pinentry
+# each talk to whichever one they happened to inherit. The symptom is
+# notifications that work intermittently and keyring prompts that never appear.
+exec ssh-agent dwm

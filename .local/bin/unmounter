@@ -5,7 +5,7 @@
 
 set -e
 
-mounteddroids="$(grep simple-mtpfs /etc/mtab | awk '{print "📱" $2}')"
+mounteddroids="$(grep jmtpfs /etc/mtab | awk '{print "📱" $2}')"
 lsblkoutput="$(lsblk -nrpo "name,type,size,mountpoint")"
 mounteddrives="$(echo "$lsblkoutput" | awk '($2=="part"||$2="crypt")&&$4!~/\/boot|\/home$|SWAP/&&length($4)>1{printf "💾%s (%s)\n",$4,$3}')"
 
@@ -17,7 +17,12 @@ chosen="$(echo "$allunmountable" | dmenu -i -p "Unmount which drive?")"
 chosen="${chosen%% *}"
 test -n "$chosen"
 
-sudo -A umount -l "/${chosen#*/}"
+# jmtpfs mounts are FUSE mounts owned by this user and are released with
+# fusermount; block devices still need sudo.
+case "$chosen" in
+	📱*) fusermount -u "/${chosen#*/}" ;;
+	*) sudo -A umount -l "/${chosen#*/}" ;;
+esac
 notify-send "Device unmounted." "$chosen has been unmounted."
 
 # Close the chosen drive if decrypted.

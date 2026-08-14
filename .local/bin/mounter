@@ -12,8 +12,12 @@ IFS='
 escape(){ echo "$@" | iconv -cf UTF-8 -t ASCII//TRANSLIT | tr -d '[:punct:]' | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed "s/-\+/-/g;s/\(^-\|-\$\)//g" ;}
 
 # Check for phones.
-phones="$(simple-mtpfs -l 2>/dev/null | sed "s/^/📱/")"
-mountedphones="$(grep "simple-mtpfs" /etc/mtab)"
+# Fedora dropped simple-mtpfs at F38 and it survives only in a single-architecture
+# COPR, so jmtpfs is used instead. Its listing has a different shape --
+# "busLocation, devNum, productId, vendorId, product, vendor" -- and the
+# busLocation,devNum pair is what -device= wants, so it goes before the colon.
+phones="$(jmtpfs -l 2>/dev/null | awk -F', ' 'NF>=6 && $1 ~ /^[0-9]+$/ {printf "📱%s,%s: %s %s\n", $1, $2, $6, $5}')"
+mountedphones="$(grep "jmtpfs" /etc/mtab)"
 # If there are already mounted phones, remove them from the list of mountables.
 [ -n "$mountedphones" ] && phones="$(for phone in $phones; do
 	for mounted in $mountedphones; do
@@ -116,9 +120,16 @@ case "$chosen" in
 	📱*)
 		notify-send "❗Note" "Remember to allow file access on your phone now."
 		getmount
-		number="${chosen%%:*}"
-		number="${chosen:1}"	# This is a bashism.
-		sudo -A simple-mtpfs -o allow_other -o fsname="simple-mtpfs-$(escape "$chosen")" --device "$number" "$mp"
+		# The list above encoded busLocation,devNum before the colon, which is
+		# exactly what jmtpfs -device= expects.
+		device="${chosen#📱}"
+		device="${device%%:*}"
+		# jmtpfs is a FUSE filesystem and mounts as this user, so no sudo. The
+		# fsname keeps each phone distinguishable in /etc/mtab so the listing
+		# above can tell which are already mounted; retry without it in case
+		# this build does not forward the option through to FUSE.
+		jmtpfs -o fsname="jmtpfs-$(escape "$chosen")" -device="$device" "$mp" ||
+			jmtpfs -device="$device" "$mp"
 		notify-send "🤖 Android Mounted." "Android device mounted to $mp."
 		;;
 esac

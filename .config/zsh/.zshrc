@@ -79,4 +79,10 @@ bindkey -M vicmd '^e' edit-command-line
 bindkey -M visual '^[[P' vi-delete
 
 # Load syntax highlighting; should be last.
-source /usr/share/zsh/plugins/fast-syntax-highlighting/fast-syntax-highlighting.plugin.zsh 2>/dev/null
+# Arch installs fast-syntax-highlighting under /usr/share/zsh/plugins; Fedora
+# packages zsh-syntax-highlighting at a different path. Try both, so this file
+# works unchanged on either distribution.
+for _hl in /usr/share/zsh/plugins/fast-syntax-highlighting/fast-syntax-highlighting.plugin.zsh /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh; do
+	[ -r "$_hl" ] && source "$_hl" && break
+done
+unset _hl

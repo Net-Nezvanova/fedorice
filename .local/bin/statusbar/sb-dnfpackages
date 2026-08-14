@@ -1,0 +1,29 @@
+#!/bin/sh
+
+# Displays the number of upgradeable packages.
+# For this to work, have `cron/checkup` run periodically to refresh dnf's
+# metadata; this script only reads the result. Clicking it runs the upgrade.
+#
+# dnf has no equivalent of pacman's libalpm hooks, so there is no system hook to
+# install that would refresh this after a manual upgrade. sb-popupgrade signals
+# the bar itself when it finishes, which covers the case that matters.
+
+case $BLOCK_BUTTON in
+	1) setsid -f "$TERMINAL" -e sb-popupgrade ;;
+	2) notify-send "📦 Upgradable packages" "$(dnf -q list --upgrades 2>/dev/null)" ;;
+	3) notify-send "🎁 Upgrade module" "📦: number of upgradable packages
+- Left click to upgrade packages
+- Middle click to show upgradable packages" ;;
+	6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
+esac
+
+# 100 means updates are available, 0 means none are, anything else is an error.
+# $? must be read on the very next line or the case below tests the wrong thing.
+updates=$(dnf -q check-update 2>/dev/null)
+status=$?
+
+[ "$status" -eq 100 ] || exit 0
+
+# check-update prints "name.arch  version  repo" rows, plus the occasional
+# section header such as "Obsoleting Packages". Only count the real rows.
+printf "%s\n" "$updates" | awk 'NF>=3 && $1 ~ /\./ {n++} END {if (n) printf "📦%d\n", n}'

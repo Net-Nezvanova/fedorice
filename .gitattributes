@@ -1,0 +1,10 @@
+# This repo is deployed to Linux. A CRLF shebang (#!/bin/sh\r) makes every
+# script unrunnable with "bad interpreter: /bin/sh^M", so LF is enforced in
+# both the index and the working tree regardless of the checkout platform.
+* text=auto eol=lf
+
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.pdf binary
