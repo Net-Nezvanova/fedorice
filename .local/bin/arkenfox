@@ -1,0 +1,45 @@
+#!/bin/sh
+
+# Applies the arkenfox user.js hardening, plus the LARBS overrides in
+# ~/.config/firefox/larbs.js, to the LibreWolf profile.
+#
+# fedora.sh attempts this at install time by starting the browser headless, but
+# on a fresh system with no X session that frequently fails; running this once
+# after your first login finishes the job. Safe to re-run whenever you want to
+# pull a newer arkenfox.
+#
+# Note that extensions do NOT come from here -- they are installed system-wide
+# by /etc/librewolf/policies/policies.json and need no profile at all.
+
+browserdir="$HOME/.librewolf"
+overrides="${XDG_CONFIG_HOME:-$HOME/.config}/firefox/larbs.js"
+arkenfoxurl="https://raw.githubusercontent.com/arkenfox/user.js/master/user.js"
+
+command -v librewolf >/dev/null 2>&1 ||
+	{ echo "librewolf is not installed." >&2; exit 1; }
+
+[ -f "$overrides" ] ||
+	{ echo "No overrides file at $overrides" >&2; exit 1; }
+
+[ -f "$browserdir/profiles.ini" ] || {
+	echo "No LibreWolf profile exists yet." >&2
+	echo "Start librewolf once, close it, then run this again." >&2
+	exit 1
+}
+
+profile="$(sed -n '/Default=.*\.default-default/ s/.*=//p' "$browserdir/profiles.ini")"
+[ -n "$profile" ] && [ -d "$browserdir/$profile" ] || {
+	echo "Could not find the default profile directory named in $browserdir/profiles.ini" >&2
+	exit 1
+}
+pdir="$browserdir/$profile"
+
+curl -sfL "$arkenfoxurl" -o "$pdir/arkenfox.js" ||
+	{ echo "Could not download arkenfox user.js." >&2; exit 1; }
+
+ln -sf "$overrides" "$pdir/user-overrides.js"
+cat "$pdir/arkenfox.js" "$pdir/user-overrides.js" >"$pdir/user.js"
+mkdir -p "$pdir/chrome"
+
+echo "Applied arkenfox + larbs.js to $pdir/user.js"
+echo "Restart librewolf for it to take effect."
