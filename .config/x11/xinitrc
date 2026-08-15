@@ -29,6 +29,22 @@ fi
 # Activate dbus variables
 dbus-update-activation-environment --all
 
+# Say plainly when the window manager is not actually installed. If fedora.sh
+# stopped before it built the suckless programs -- which is what happens when
+# the machine has no network, the failure this port was most often hit by --
+# then dwm is simply not on $PATH, and `exec ssh-agent dwm` dies with nothing
+# more useful than "No such file or directory" as X tears the screen down. The
+# result looks like a broken graphical stack rather than an unfinished install.
+for prog in dwm ssh-agent; do
+	command -v "$prog" >/dev/null 2>&1 || {
+		printf '%s is not installed or not on $PATH.\n' "$prog" >&2
+		printf 'The install did not finish. Check /var/log/fedora-larbs.log,\n' >&2
+		printf 'then re-run fedora.sh once the network is working.\n' >&2
+		exit 1
+	}
+done
+unset prog
+
 # Fedora already has a systemd user session bus (dbus-broker at
 # $XDG_RUNTIME_DIR/bus, exported by pam_systemd long before this file runs).
 # Upstream's `dbus-launch` here is an Artix/runit accommodation: on systemd it
