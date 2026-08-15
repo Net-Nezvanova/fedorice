@@ -1,10 +1,24 @@
 #!/bin/sh
 
-# current brightness
-curr_brightness=$(cat /sys/class/backlight/*/brightness)
+# Pick exactly one backlight device. Globbing straight into `cat` breaks two
+# ways: on a desktop the glob does not expand, cat errors, and the arithmetic
+# below divides by an empty string on every single bar refresh; on a laptop
+# exposing both intel_backlight and acpi_video0 it returns two lines and the
+# arithmetic is a syntax error. Prefer a real panel backlight over the ACPI
+# shim, which is usually the one that actually tracks the hardware.
+for dev in /sys/class/backlight/*_backlight /sys/class/backlight/*; do
+	[ -r "$dev/brightness" ] && [ -r "$dev/max_brightness" ] && break
+	dev=""
+done
 
-# max_brightness
-max_brightness=$(cat /sys/class/backlight/*/max_brightness)
+# No backlight at all (desktop, or a VM): print nothing rather than an error.
+[ -n "$dev" ] || exit 0
+
+read -r curr_brightness <"$dev/brightness"
+read -r max_brightness <"$dev/max_brightness"
+
+# Guard against a driver reporting 0, which would abort the whole block.
+[ "${max_brightness:-0}" -gt 0 ] 2>/dev/null || exit 0
 
 # brightness percentage
 brightness_per=$((100 * curr_brightness / max_brightness))

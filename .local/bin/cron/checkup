@@ -11,14 +11,32 @@ notify-send "📦 Repository Sync" "Checking for package updates..."
 sudo dnf upgrade --downloadonly -y || notify-send "Error downloading updates.
 
 Check your internet connection, whether another dnf transaction is already running, or run the upgrade manually to see the errors."
-pkill -RTMIN+8 "${STATUSBAR:-dwmblocks}"
+
+# Count the pending upgrades once, here, and cache the number. sb-dnfpackages
+# used to run `dnf check-update` itself, which under dnf5 means a network round
+# trip on every status bar refresh -- seconds of stall, repeatedly. The bar now
+# reads nothing but this file.
+cachedir="${XDG_CACHE_HOME:-$HOME/.cache}/larbs"
+mkdir -p "$cachedir"
 
 # dnf check-update exits 100 when updates ARE available, 0 when there are none,
 # and 1 on error. Treating any non-zero status as "updates available" would
 # report every metadata failure as a pending upgrade, so test for 100 exactly.
-dnf -q check-update >/dev/null 2>&1
+updates=$(dnf -q check-update 2>/dev/null)
 case $? in
-	100) notify-send "🎁 Repository Sync" "Updates available. Click statusbar icon (📦) for update." ;;
-	0) notify-send "📦 Repository Sync" "Sync complete. No new packages for update." ;;
+	100)
+		# check-update prints "name.arch  version  repo" rows, plus the
+		# occasional section header such as "Obsoleting Packages". Only
+		# count the real rows.
+		printf "%s\n" "$updates" |
+			awk 'NF>=3 && $1 ~ /\./ {n++} END {print n+0}' >"$cachedir/dnf-updates"
+		notify-send "🎁 Repository Sync" "Updates available. Click statusbar icon (📦) for update." ;;
+	0)
+		echo 0 >"$cachedir/dnf-updates"
+		notify-send "📦 Repository Sync" "Sync complete. No new packages for update." ;;
+	# On error leave the cached count alone: a stale number is more useful than
+	# claiming zero updates because the network was down.
 	*) notify-send "📦 Repository Sync" "Could not check for updates. See if dnf runs by hand." ;;
 esac
+
+pkill -RTMIN+8 "${STATUSBAR:-dwmblocks}"

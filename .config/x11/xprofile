@@ -3,7 +3,12 @@
 # This file runs when a DM logs you into a graphical session.
 # If you use startx/xinit like a Chad, this file will also be sourced.
 
-xrandr --dpi 96		# Set DPI. User may want to use a larger number for larger screens.
+# Set DPI. 96 is the historical default and is wrong for most laptop panels --
+# a 14" 1920x1080 ThinkPad is about 157 -- so forcing it renders everything
+# small with no way to override per machine. Drop a single number into
+# ~/.config/x11/dpi to change it; `xdpyinfo | grep dimensions` and the panel
+# size will tell you what it should be.
+xrandr --dpi "$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/x11/dpi" 2>/dev/null || echo 96)"
 setbg &			# set the background with the `setbg` script
 #xrdb ${XDG_CONFIG_HOME:-$HOME/.config}/x11/xresources & xrdbpid=$!	# Uncomment to use Xresources colors/settings on startup
 
@@ -11,7 +16,14 @@ setbg &			# set the background with the `setbg` script
 # activated by systemd (fedora.sh also runs `systemctl --global enable
 # pipewire.socket`). Starting it here too gives two daemons, journal spam and
 # an inconsistent wpctl.
-autostart="mpd xcompmgr dunst unclutter remapd"
+#
+# lxpolkit is the polkit authentication agent. Without one running, every
+# privileged action sysact offers -- shutdown, reboot, suspend, hibernate --
+# fails silently, because `systemctl poweroff -i` maps to a polkit action that
+# is auth_admin_keep and there is nothing on screen able to ask. It ships an
+# /etc/xdg/autostart entry, which is useless here: dwm has no XDG autostart
+# handler, so it has to be started explicitly.
+autostart="mpd xcompmgr dunst unclutter remapd lxpolkit"
 
 for program in $autostart; do
 	pidof -sx "$program" || "$program" &

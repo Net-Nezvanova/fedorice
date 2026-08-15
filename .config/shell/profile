@@ -65,7 +65,28 @@ export _JAVA_AWT_WM_NONREPARENTING=1      # Fix for Java applications in dwm
 [ ! -f "$XDG_CONFIG_HOME/shell/shortcutrc" ] && setsid -f shortcuts >/dev/null 2>&1
 
 # Start graphical server on user's current tty if not already running.
-[ "$(tty)" = "/dev/tty1" ] && ! pidof -s Xorg >/dev/null 2>&1 && exec startx
+#
+# Deliberately not `exec startx`. With exec, the login shell is replaced, so if
+# Xorg or dwm fails to start you are thrown straight back to the login prompt,
+# the error scrolls past before it can be read, and logging in again just
+# repeats it -- an unbreakable loop with no diagnostics, on exactly the machine
+# where you most need them. Running it as a child instead means a failure drops
+# you to a usable shell on tty1 with the log named on screen.
+if [ "$(tty)" = "/dev/tty1" ] && ! pidof -s Xorg >/dev/null 2>&1; then
+	mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}"
+	startx >"${XDG_CACHE_HOME:-$HOME/.cache}/startx.log" 2>&1
+	startx_status=$?
+	if [ "$startx_status" -ne 0 ]; then
+		printf '\nstartx exited %s. Log: %s\n' \
+			"$startx_status" "${XDG_CACHE_HOME:-$HOME/.cache}/startx.log" >&2
+		printf 'Last lines:\n' >&2
+		tail -n 15 "${XDG_CACHE_HOME:-$HOME/.cache}/startx.log" >&2
+	else
+		# Clean X exit means the session ended on purpose, so log out with it.
+		exit 0
+	fi
+	unset startx_status
+fi
 
 # Switch escape and caps if tty and no passwd required:
 sudo -n loadkeys "$XDG_DATA_HOME/larbs/ttymaps.kmap" 2>/dev/null

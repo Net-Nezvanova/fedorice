@@ -17,13 +17,17 @@ case $BLOCK_BUTTON in
 	6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
 esac
 
-# 100 means updates are available, 0 means none are, anything else is an error.
-# $? must be read on the very next line or the case below tests the wrong thing.
-updates=$(dnf -q check-update 2>/dev/null)
-status=$?
+# Read the count cron/checkup cached, and nothing else. This script is run on
+# every bar refresh, and calling dnf here meant a network round trip each time:
+# under dnf5 that stalls the whole bar for seconds and spins the CPU. Until
+# checkup has run once the file does not exist, and the block stays empty.
+cachefile="${XDG_CACHE_HOME:-$HOME/.cache}/larbs/dnf-updates"
 
-[ "$status" -eq 100 ] || exit 0
+[ -r "$cachefile" ] || exit 0
+read -r n <"$cachefile" || exit 0
 
-# check-update prints "name.arch  version  repo" rows, plus the occasional
-# section header such as "Obsoleting Packages". Only count the real rows.
-printf "%s\n" "$updates" | awk 'NF>=3 && $1 ~ /\./ {n++} END {if (n) printf "📦%d\n", n}'
+# Guard the read: an empty or half-written file must not reach printf as a
+# "invalid number" error on every refresh.
+[ "${n:-0}" -gt 0 ] 2>/dev/null || exit 0
+
+printf "📦%d\n" "$n"

@@ -3,6 +3,13 @@
 printf "Beginning upgrade.\\n"
 
 sudo dnf -y upgrade
+
+# Clear the cached count sb-dnfpackages reads. Without this the bar keeps
+# showing the pre-upgrade number until the next cron/checkup run, which looks
+# like the upgrade silently failed.
+cachedir="${XDG_CACHE_HOME:-$HOME/.cache}/larbs"
+mkdir -p "$cachedir" && echo 0 >"$cachedir/dnf-updates"
+
 pkill -RTMIN+8 "${STATUSBAR:-dwmblocks}"
 
 printf "\\nUpgrade complete.\\nPress <Enter> to exit window.\\n\\n"

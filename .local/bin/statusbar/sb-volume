@@ -4,9 +4,14 @@
 
 case $BLOCK_BUTTON in
 	1) setsid -w -f "$TERMINAL" -e pulsemixer; pkill -RTMIN+10 "${STATUSBAR:-dwmblocks}" ;;
-	2) wpctl set-mute @DEFAULT_SINK@ toggle ;;
-	4) wpctl set-volume @DEFAULT_SINK@ 1%+ ;;
-	5) wpctl set-volume @DEFAULT_SINK@ 1%- ;;
+	# @DEFAULT_AUDIO_SINK@, not @DEFAULT_SINK@. The read path below already uses
+	# the former, and the latter is not a valid wpctl target on every
+	# wireplumber version -- where it is not, mute and scroll silently do
+	# nothing while the displayed number still updates, which looks like a
+	# hardware fault rather than a typo.
+	2) wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+	4) wpctl set-volume @DEFAULT_AUDIO_SINK@ 1%+ ;;
+	5) wpctl set-volume @DEFAULT_AUDIO_SINK@ 1%- ;;
 	3) notify-send "📢 Volume module" "\- Shows volume 🔊, 🔇 if muted.
 - Middle click to mute.
 - Scroll to change." ;;
