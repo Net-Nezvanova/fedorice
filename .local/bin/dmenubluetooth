@@ -1,0 +1,153 @@
+#!/bin/sh
+
+# A dmenu front end for bluetoothctl.
+#
+# LARBS ships no Bluetooth tooling whatsoever, and there is no good packaged
+# front end to point at on Fedora either: bluetuith is not in the repos, and
+# blueman's tray applet is useless here because this dwm has no systray patch,
+# leaving only its manager window. bluez's own bluetoothctl is already
+# installed, is fully scriptable since 5.65, and speaks the same D-Bus API any
+# GUI would, so this drives it directly and adds no dependencies.
+#
+# Pairing is the one step deliberately not done silently. It is the only
+# operation that can demand a passkey or a yes/no confirmation, so it runs in a
+# floating terminal where those prompts are visible and answerable -- the same
+# reasoning behind `mounter` opening a floatterm for cryptsetup.
+
+notify() { notify-send "🔵 Bluetooth" "$1"; }
+
+# Map bluez's Icon property onto something legible in the bar font. The values
+# come from the freedesktop icon-naming spec, which bluez reports verbatim.
+deviceicon() {
+	case "$1" in
+		*headset*|*headphone*)	printf '🎧' ;;
+		*audio*|*speaker*)	printf '🔊' ;;
+		*keyboard*)		printf '⌨' ;;
+		*mouse*|*tablet*)	printf '🖱' ;;
+		*phone*)		printf '📱' ;;
+		*computer*)		printf '💻' ;;
+		*watch*)		printf '⌚' ;;
+		*printer*)		printf '🖨' ;;
+		*camera*)		printf '📷' ;;
+		*)			printf '📶' ;;
+	esac
+}
+
+# One line per known device: icon, connection state, name, MAC. The MAC is
+# shown rather than hidden because two of the same model of headphone are
+# otherwise indistinguishable, and it doubles as the key parsed back out below.
+listdevices() {
+	bluetoothctl devices "$@" | while read -r _ mac name; do
+		info="$(bluetoothctl info "$mac" 2>/dev/null)"
+		case "$info" in
+			*"Connected: yes"*) state="✅" ;;
+			*)                  state="⬜" ;;
+		esac
+		icon="$(deviceicon "$(printf '%s' "$info" | sed -n 's/^[[:space:]]*Icon:[[:space:]]*//p')")"
+		printf '%s %s %s (%s)\n' "$icon" "$state" "$name" "$mac"
+	done
+}
+
+# Everything the menu feeds back has the MAC in trailing parens.
+macof() { mac="${1##*\(}"; printf '%s' "${mac%\)}"; }
+
+menu() { dmenu -i -l 15 -p "$1"; }
+
+# Pair, trust and connect in one visible pass. trust is what makes the device
+# reconnect on its own afterwards; without it every future connection has to be
+# initiated by hand from this menu.
+pairdevice() {
+	mac="$1"
+	setsid -f "${TERMINAL:-st}" -n floatterm -g 70x18 -e sh -c \
+		"bluetoothctl --agent KeyboardDisplay --timeout 60 pair '$mac' &&
+		 bluetoothctl trust '$mac' &&
+		 bluetoothctl --timeout 30 connect '$mac'
+		 printf '\\nDone. Press enter to close.'; read -r _"
+}
+
+# rfkill is checked before anything else because a blocked adapter makes every
+# bluetoothctl command fail in a way that reads like a missing device.
+case "$(rfkill list bluetooth)" in
+	*"Hard blocked: yes"*)
+		notify "Adapter is hard blocked -- use the hardware switch or Fn key."
+		exit 1 ;;
+	*"Soft blocked: yes"*)
+		[ "$(printf 'No\nYes' | menu 'Bluetooth is soft blocked. Unblock?')" = "Yes" ] || exit 1
+		sudo -A rfkill unblock bluetooth || exit 1 ;;
+esac
+
+# A powered-down controller still answers `devices`, listing everything it has
+# ever paired with, so offering that list would produce actions that silently
+# do nothing. Collapse the menu to the one thing that works instead.
+case "$(bluetoothctl show)" in
+	*"Powered: no"*)
+		[ "$(printf 'No\nYes' | menu 'Bluetooth is off. Turn it on?')" = "Yes" ] || exit 1
+		bluetoothctl power on >/dev/null && notify "Powered on." || notify "Failed to power on."
+		exit ;;
+esac
+
+case "$(bluetoothctl show)" in
+	*"Discoverable: yes"*) disc="📡 discoverable: on" ;;
+	*)                     disc="📡 discoverable: off" ;;
+esac
+
+chosen="$(printf '%s\n🔍 scan for new devices\n%s\n🔌 power off\n🔧 bluetoothctl (terminal)' \
+	"$(listdevices)" "$disc" | sed '/^$/d' | menu 'Bluetooth:')"
+
+[ -n "$chosen" ] || exit 1
+
+case "$chosen" in
+	"🔍 scan for new devices")
+		notify "Scanning for 10 seconds…"
+		bluetoothctl --timeout 10 scan on >/dev/null 2>&1
+		# Only unpaired results are worth offering: anything already paired is
+		# on the main menu with its real connection state attached.
+		new="$(bluetoothctl devices | while read -r _ mac name; do
+			bluetoothctl info "$mac" 2>/dev/null | grep -q "Paired: yes" && continue
+			printf '%s (%s)\n' "$name" "$mac"
+		done)"
+		[ -n "$new" ] || { notify "No new devices found."; exit 1; }
+		pick="$(printf '%s' "$new" | menu 'Pair with:')"
+		[ -n "$pick" ] && pairdevice "$(macof "$pick")"
+		;;
+
+	"📡 discoverable: on")
+		bluetoothctl discoverable off >/dev/null && notify "No longer discoverable." ;;
+	"📡 discoverable: off")
+		# pairable rides along: being visible is pointless if the controller
+		# then refuses the incoming pairing request it was made visible for.
+		bluetoothctl discoverable on >/dev/null
+		bluetoothctl pairable on >/dev/null
+		notify "Discoverable and pairable." ;;
+
+	"🔌 power off")
+		bluetoothctl power off >/dev/null && notify "Powered off." ;;
+
+	"🔧 bluetoothctl (terminal)")
+		setsid -f "${TERMINAL:-st}" -n floatterm -g 70x20 -e bluetoothctl ;;
+
+	*)
+		mac="$(macof "$chosen")"
+		name="${chosen#* * }"
+		name="${name% (*)}"
+		case "$chosen" in
+			*"✅"*) actions="🔌 disconnect\nℹ️ info\n🗑️ remove" ;;
+			*)      actions="🔗 connect\nℹ️ info\n🗑️ remove" ;;
+		esac
+		case "$(printf "$actions" | menu "$name:")" in
+			"🔗 connect")
+				notify "Connecting to $name…"
+				if bluetoothctl --timeout 20 connect "$mac" >/dev/null 2>&1
+				then notify "Connected to $name."
+				else notify "Could not connect to $name."
+				fi ;;
+			"🔌 disconnect")
+				bluetoothctl disconnect "$mac" >/dev/null && notify "Disconnected $name." ;;
+			"ℹ️ info")
+				notify-send "🔵 $name" "$(bluetoothctl info "$mac")" ;;
+			"🗑️ remove")
+				[ "$(printf 'No\nYes' | menu "Remove $name?")" = "Yes" ] &&
+					bluetoothctl remove "$mac" >/dev/null &&
+					notify "Removed $name." ;;
+		esac ;;
+esac
