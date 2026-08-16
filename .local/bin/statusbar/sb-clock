@@ -1,5 +1,7 @@
 #!/bin/sh
 
+# %I, not %H: the time is shown in 24h below, but there are only twelve
+# clock-face emoji, so the icon still tracks the 12-hour position.
 clock=$(date '+%I')
 
 case "$clock" in
@@ -24,4 +26,4 @@ case $BLOCK_BUTTON in
 	6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
 esac
 
-date "+%Y %b %d (%a) $icon%I:%M%p"
+date "+%Y %b %d (%a) $icon%H:%M"
