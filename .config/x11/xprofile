@@ -9,7 +9,7 @@
 # ~/.config/x11/dpi to change it; `xdpyinfo | grep dimensions` and the panel
 # size will tell you what it should be.
 xrandr --dpi "$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/x11/dpi" 2>/dev/null || echo 96)"
-setbg &			# set the background with the `setbg` script
+setbg & setbgpid=$!	# set the background with the `setbg` script
 #xrdb ${XDG_CONFIG_HOME:-$HOME/.config}/x11/xresources & xrdbpid=$!	# Uncomment to use Xresources colors/settings on startup
 
 # pipewire is deliberately absent from this list. On Fedora it is socket-
@@ -31,3 +31,13 @@ done >/dev/null 2>&1
 
 # Ensure that xrdb has finished running before moving on to start the WM/DE.
 [ -n "$xrdbpid" ] && wait "$xrdbpid"
+
+# Same reasoning for setbg, and it is the one that actually bites. dwm reads
+# its colours out of the X resource database exactly once at startup, and the
+# pywal run inside setbg is what puts them there -- but wal takes about a
+# second, and xinitrc execs dwm the moment this file returns. Backgrounded
+# without this wait, dwm reliably loses the race and comes up with its
+# compiled-in colours, then switches to the wallpaper's palette on the next
+# restart or Mod+F5. Waiting costs a second of startup and makes the theme
+# the same every boot.
+[ -n "$setbgpid" ] && wait "$setbgpid"
