@@ -10,6 +10,21 @@
 # pixel width by the panel width in inches: `xrandr | grep " connected"` prints
 # both, as e.g. "1920x1080+0+0 309mm x 173mm" -> 1920 / (309/25.4) = 158.
 #
+# That number is the physically correct one, and it is not what this file
+# holds. Correct is not the same as comfortable: what the DPI really trades is
+# glyph size against how much fits on screen. Measured on this panel, in a
+# half-width st frame:
+#
+#	 DPI	bar text  st text   st grid   bar
+#	  96	 13.3px	  12.0px   143x60    31px	upstream
+#	 116	 16.1px	  14.5px   111x48    35px	<- this file
+#	 132	 18.3px	  16.5px   100x44    38px
+#	 158	 21.9px	  19.8px    83x36    43px	physically true
+#
+# 158 costs too many rows to work in. 116 is about 1.21x -- noticeably bigger
+# while still leaving a terminal wide enough for a side-by-side diff. Write any
+# of them; nothing else has to change.
+#
 # Two settings, not one, and they are not interchangeable. `xrandr --dpi`
 # rewrites the physical size the X screen reports, which is what Xft falls back
 # to when sizing a point-specified font -- that covers dwm, dmenu and st.
