@@ -4,11 +4,26 @@
 # If you use startx/xinit like a Chad, this file will also be sourced.
 
 # Set DPI. 96 is the historical default and is wrong for most laptop panels --
-# a 14" 1920x1080 ThinkPad is about 157 -- so forcing it renders everything
+# a 14" 1920x1080 ThinkPad is about 158 -- so forcing it renders everything
 # small with no way to override per machine. Drop a single number into
-# ~/.config/x11/dpi to change it; `xdpyinfo | grep dimensions` and the panel
-# size will tell you what it should be.
-xrandr --dpi "$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/x11/dpi" 2>/dev/null || echo 96)"
+# ~/.config/x11/dpi to change it. To work out what it should be, divide the
+# pixel width by the panel width in inches: `xrandr | grep " connected"` prints
+# both, as e.g. "1920x1080+0+0 309mm x 173mm" -> 1920 / (309/25.4) = 158.
+#
+# Two settings, not one, and they are not interchangeable. `xrandr --dpi`
+# rewrites the physical size the X screen reports, which is what Xft falls back
+# to when sizing a point-specified font -- that covers dwm, dmenu and st.
+# GTK and Firefox/Zen ignore it and read the Xft.dpi resource instead, so
+# without the merge below the desktop scales and the browser does not. Both
+# come from the same file so they cannot drift apart.
+#
+# Only fonts given in points (size=) follow this. A font pinned in pixels
+# (pixelsize=) is DPI-independent by definition and will not move, which is
+# why every font in this port's dwm, dmenu and st is specified in points --
+# mixing the two units means a DPI change desynchronises them. See RUNBOOK 6.10.
+dpi="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/x11/dpi" 2>/dev/null || echo 96)"
+xrandr --dpi "$dpi"
+printf 'Xft.dpi: %s\n' "$dpi" | xrdb -merge -
 setbg & setbgpid=$!	# set the background with the `setbg` script
 #xrdb ${XDG_CONFIG_HOME:-$HOME/.config}/x11/xresources & xrdbpid=$!	# Uncomment to use Xresources colors/settings on startup
 
