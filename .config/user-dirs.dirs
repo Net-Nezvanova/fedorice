@@ -1,1 +1,32 @@
+# The XDG user directories. GTK file dialogs, Zen's download location and
+# xdg-open all read this file; the shell does not, so the names below are kept
+# identical to the fallbacks already hard-coded in .config/shell/bm-dirs
+# (${XDG_MUSIC_DIR:-$HOME/Music} and friends). Matching them means nothing has
+# to source this file for the two to agree -- the bookmarks and the file
+# dialogs land in the same place by construction.
+#
+# Capitalised, not voidrice's lowercase dl/mus/pix: this port's own dotfiles
+# already assume the capitalised spellings. mpd.conf and ncmpcpp both point at
+# ~/Music, and bm-dirs lists Documents, Downloads, Music, Pictures and Videos.
+# Renaming them would mean editing all of those to gain nothing.
+#
+# The xdg-user-dirs package is deliberately NOT installed. It ships a login
+# hook (xdg-user-dirs-update) that rewrites this file and recreates any
+# directory you delete, which is the opposite of what a hand-written list is
+# for. The directories are created once, by fedora.sh, and then left alone.
+
+# No desktop. dwm draws no icons on the root window, so anything a program
+# files under "Desktop" should simply land in the home directory.
 XDG_DESKTOP_DIR="$HOME/"
+
+XDG_DOWNLOAD_DIR="$HOME/Downloads"
+XDG_DOCUMENTS_DIR="$HOME/Documents"
+XDG_MUSIC_DIR="$HOME/Music"
+XDG_PICTURES_DIR="$HOME/Pictures"
+XDG_VIDEOS_DIR="$HOME/Videos"
+
+# Pointed into .local/share rather than the home directory. Nothing in this
+# setup uses either, and left at their defaults they are two empty folders in
+# ~ that some GTK program creates on first run and nobody ever opens.
+XDG_TEMPLATES_DIR="$HOME/.local/share/Templates"
+XDG_PUBLICSHARE_DIR="$HOME/.local/share/Public"

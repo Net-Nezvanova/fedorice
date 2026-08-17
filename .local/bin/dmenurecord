@@ -11,6 +11,13 @@
 
 getdim() { xrandr | grep -oP '(?<=current ).*(?=,)' | tr -d ' ' ;}
 
+# Upstream drops every recording straight into $HOME. One subdirectory holds
+# all of them, audio included: the .flac from `audio` would otherwise want
+# ~/Music, and mpd runs with auto_update on, so every voice memo would turn up
+# in the ncmpcpp library.
+recdir="${XDG_VIDEOS_DIR:-$HOME/Videos}/recordings"
+mkdir -p "$recdir"
+
 updateicon() { \
 	echo "$1" > /tmp/recordingicon
 	pkill -RTMIN+9 "${STATUSBAR:-dwmblocks}"
@@ -35,7 +42,7 @@ screencast() { \
 	-f alsa -thread_queue_size 1024 -i default \
  	-c:v h264 \
 	-crf 0 -preset ultrafast -c:a aac \
-	"$HOME/screencast-$(date '+%y%m%d-%H%M-%S').mp4" &
+	"$recdir/screencast-$(date '+%y%m%d-%H%M-%S').mp4" &
 	echo $! > /tmp/recordingpid
 	updateicon "⏺️🎙️"
        	}
@@ -46,7 +53,7 @@ video() { ffmpeg \
 	-s "$(getdim)" \
 	-i "$DISPLAY" \
  	-c:v libx264 -qp 0 -r 30 \
-	"$HOME/video-$(date '+%y%m%d-%H%M-%S').mkv" &
+	"$recdir/video-$(date '+%y%m%d-%H%M-%S').mkv" &
 	echo $! > /tmp/recordingpid
 	updateicon "⏺️"
 	}
@@ -55,7 +62,7 @@ webcamhidef() { ffmpeg \
 	-f v4l2 \
 	-i /dev/video0 \
 	-video_size 1920x1080 \
-	"$HOME/webcam-$(date '+%y%m%d-%H%M-%S').mkv" &
+	"$recdir/webcam-$(date '+%y%m%d-%H%M-%S').mkv" &
 	echo $! > /tmp/recordingpid
 	updateicon "🎥"
 	}
@@ -64,7 +71,7 @@ webcam() { ffmpeg \
 	-f v4l2 \
 	-i /dev/video0 \
 	-video_size 640x480 \
-	"$HOME/webcam-$(date '+%y%m%d-%H%M-%S').mkv" &
+	"$recdir/webcam-$(date '+%y%m%d-%H%M-%S').mkv" &
 	echo $! > /tmp/recordingpid
 	updateicon "🎥"
 	}
@@ -74,7 +81,7 @@ audio() { \
 	ffmpeg \
 	-f alsa -i default \
 	-c:a flac \
-	"$HOME/audio-$(date '+%y%m%d-%H%M-%S').flac" &
+	"$recdir/audio-$(date '+%y%m%d-%H%M-%S').flac" &
 	echo $! > /tmp/recordingpid
 	updateicon "🎙️"
 	}
@@ -108,7 +115,7 @@ videoselected()
 	-video_size "$W"x"$H" \
 	-i :0.0+"$X,$Y" \
 	-c:v libx264 -qp 0 -r 30 \
-	"$HOME/box-$(date '+%y%m%d-%H%M-%S').mkv" &
+	"$recdir/box-$(date '+%y%m%d-%H%M-%S').mkv" &
 	echo $! > /tmp/recordingpid
 	updateicon "⏺️"
 }
