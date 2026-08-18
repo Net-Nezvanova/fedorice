@@ -1,0 +1,44 @@
+#!/bin/sh
+
+# Tailscale indicator, in the slot the ❓ help icon used to occupy. Nothing was
+# lost in the swap: Mod+F1 already runs the identical `groff -mom ... | zathura`
+# command the help icon's left click ran, and sysact's "♻️ renew" already sends
+# the same kill -HUP its middle click sent. The guide and the WM restart both
+# survive; only the duplicate button is gone.
+#
+# State comes from routing table 52 -- the table tailscaled installs into --
+# and never from the tailscale CLI. The CLI is a round trip to the daemon over
+# its unix socket at ~15ms, where this is one netlink read at ~3ms, and a bar
+# module pays that on every refresh. The three cases are exact and need no
+# interpretation:
+#
+#   empty                    no routes installed. Daemon stopped, tailnet down,
+#                            or the TUN device wedged -- which is a real state
+#                            here: a wifi change can leave tailscale0 admin-down
+#                            while `tailscale status` still reports Running.
+#                            See RUNBOOK 6.15.
+#   default dev tailscale0   an exit node is selected; everything is tunnelled.
+#   anything else            tailnet up, traffic exits locally.
+#
+# That third case is the reason the module polls at all rather than running on
+# signal alone. A wedged interface is caused by something outside this menu, so
+# nothing would signal it; 3ms every 30 seconds is 0.01% of one core to have
+# the bar tell the truth about it.
+
+case "$(ip -4 route show table 52 2>/dev/null)" in
+	"")                         icon="🔌" ;;
+	*"default dev tailscale0"*) icon="🔒" ;;
+	*)                          icon="🔗" ;;
+esac
+
+case $BLOCK_BUTTON in
+	1) dmenutailscale ;;
+	2) dmenutailscale toggle ;;
+	3) notify-send "🔗 Tailscale module" "\- Left click for the menu.
+- Middle click to toggle the exit node.
+- Shift click to edit script.
+🔌: tailnet down or no routes installed
+🔗: tailnet up, traffic exits locally
+🔒: exit node selected, all traffic tunnelled" ;;
+	6) setsid -f "$TERMINAL" -e "$EDITOR" "$0" ;;
+esac; echo "$icon"

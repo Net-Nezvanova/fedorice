@@ -1,0 +1,134 @@
+#!/bin/sh
+
+# A dmenu front end for Tailscale, driven from the sb-tailscale status bar
+# module the way td-toggle is driven from sb-torrent. Called with no argument
+# it opens the menu; called as `dmenutailscale toggle` it flips the exit node
+# on or off without prompting, which is what the module's middle click uses.
+#
+# State is read from plain `tailscale status`, not `tailscale status --json`,
+# deliberately: jq is not in progs.csv and is only present here as some other
+# package's transitive dependency, so a shipped script must not rely on it.
+# The plain output is stable in the two fields wanted -- IP in $1, hostname in
+# $2 -- and neither can contain a space, so awk on field position is safe.
+#
+# The discriminator for which peer is selected is upstream's own wording: a
+# peer that advertises an exit node but is not in use reads "offers exit node",
+# and the one actually in use reads "exit node" with no "offers". Parsing that
+# avoids a second call to `tailscale debug prefs`, which returns the node's
+# opaque ID rather than a name and would need a lookup to be displayed.
+
+notify() { notify-send "🔗 Tailscale" "$1"; }
+menu() { dmenu -i -l 10 -p "$1"; }
+refresh() { pkill -RTMIN+15 "${STATUSBAR:-dwmblocks}"; }
+
+# Every exit node the tailnet offers, one per line, as "<mark> <name> (<ip>)".
+# Offline peers are listed rather than hidden: an exit node that has gone away
+# is worth seeing, and selecting one is harmless -- tailscaled simply waits.
+exitnodes() {
+	printf '%s\n' "$1" | awk '
+		/^#/ { next }
+		/exit node/ {
+			if ($0 ~ /offline/)              mark = "💤"
+			else if ($0 ~ /offers exit node/) mark = "⬜"
+			else                              mark = "✅"
+			printf "%s %s (%s)\n", mark, $2, $1
+		}'
+}
+
+# The selected node, or empty. Same discriminator as above.
+activenode() {
+	printf '%s\n' "$1" | awk '!/^#/ && /exit node/ && !/offers exit node/ {print $2; exit}'
+}
+
+# --exit-node-allow-lan-access rides along with every selection. Without it an
+# exit node swallows the local subnet too, which costs the router's admin page,
+# any printer or NAS, and -- on this machine specifically -- transmission's
+# local peers. Tunnelling the LAN gains nothing: it never leaves the building.
+setnode() {
+	tailscale set --exit-node="$1" --exit-node-allow-lan-access &&
+		notify "All traffic now exits through <b>$2</b>." ||
+		notify "Could not select $2."
+}
+
+clearnode() {
+	tailscale set --exit-node= &&
+		notify "Exit node cleared. Traffic goes out locally again." ||
+		notify "Could not clear the exit node."
+}
+
+# tailscaled is a system unit, so a stopped daemon is not something the menu
+# can work around. Collapse to the one action that helps, the same way
+# dmenubluetooth collapses when the controller is powered down.
+if ! systemctl is-active --quiet tailscaled; then
+	[ "$(printf 'No\nYes' | menu 'tailscaled is not running. Start it?')" = "Yes" ] || exit 1
+	sudo -A systemctl start tailscaled && notify "Daemon started." || notify "Could not start the daemon."
+	refresh
+	exit
+fi
+
+status="$(tailscale status 2>&1)"
+
+case "$status" in
+	*"Logged out"*)
+		notify "Logged out. Run <b>tailscale up</b> in a terminal to authenticate."
+		exit 1 ;;
+	# `tailscale down` keeps the daemon resident but detaches from the tailnet.
+	# That is the normal off state, so offer the way back rather than a menu of
+	# exit nodes that cannot be reached.
+	*"Tailscale is stopped"*)
+		if [ "$1" = "toggle" ] ||
+		   [ "$(printf 'No\nYes' | menu 'Tailnet is disconnected. Connect?')" = "Yes" ]
+		then tailscale up && notify "Connected to the tailnet." || notify "Could not connect."
+		fi
+		refresh
+		exit ;;
+esac
+
+active="$(activenode "$status")"
+
+# Middle click: straight toggle, no menu. With one exit node on the tailnet
+# this is the whole feature; with several it picks the first online one, and
+# the menu is there for choosing between them.
+if [ "$1" = "toggle" ]; then
+	if [ -n "$active" ]; then
+		clearnode
+	else
+		first="$(exitnodes "$status" | grep '^⬜' | head -n 1)"
+		[ -n "$first" ] || { notify "No exit node is available."; exit 1; }
+		ip="${first##*\(}"
+		name="${first#* }"
+		setnode "${ip%\)}" "${name%% (*}"
+	fi
+	refresh
+	exit
+fi
+
+nodes="$(exitnodes "$status")"
+
+chosen="$({
+	[ -n "$nodes" ] && printf '%s\n' "$nodes"
+	printf '🚫 no exit node (direct)\n'
+	printf '🔌 disconnect tailnet\n'
+	printf '⏻ stop daemon (frees ~25MB)\n'
+	printf 'ℹ️ status in a terminal\n'
+} | menu "Tailscale (exit node: ${active:-none}):")"
+
+[ -n "$chosen" ] || exit 1
+
+case "$chosen" in
+	"🚫 no exit node (direct)")	clearnode ;;
+	"🔌 disconnect tailnet")	tailscale down && notify "Disconnected from the tailnet." ;;
+	"⏻ stop daemon"*)		sudo -A systemctl stop tailscaled && notify "Daemon stopped." ;;
+	"ℹ️ status in a terminal")
+		setsid -f "${TERMINAL:-st}" -n floatterm -g 100x20 -e sh -c \
+			'tailscale status; printf "\nPress enter to close."; read -r _' ;;
+	# Picking the node already ticked turns it off, so one entry is the whole
+	# on/off cycle and the menu never needs a separate "unselect" beside it.
+	"✅ "*)				clearnode ;;
+	*)
+		ip="${chosen##*\(}"
+		name="${chosen#* }"
+		setnode "${ip%\)}" "${name%% (*}" ;;
+esac
+
+refresh
