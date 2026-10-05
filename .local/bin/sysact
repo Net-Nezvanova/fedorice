@@ -22,7 +22,26 @@ lock(){
 	pkill -RTMIN+10 "${STATUSBAR:-dwmblocks}"
 }
 
-case "$(printf "🔒 lock\n🚪 leave $WM\n♻️ renew $WM\n🐻 hibernate\n🔃 reboot\n🖥️shutdown\n💤 sleep\n📺 display off" | dmenu -i -p 'Action: ')" in
+# "Sleepless lid" is a logind inhibitor, not a config change: while the
+# inhibitor process lives, closing the lid does nothing; kill it and the lid
+# suspends again. No root, nothing to edit, and it cannot be left on across a
+# reboot. The --why string is the marker the toggle finds it by. setsid makes
+# the inhibitor its own process group so one kill takes the sleep with it.
+# Nothing in X reacts to the lid, so blank the panel (display off) before
+# closing, or the backlight stays lit under it.
+lidtag="sleepless lid"
+lidpid(){ pgrep -f -- "systemd-inhibit.*--why=$lidtag" ; }
+lidstate(){ lidpid >/dev/null && echo on || echo off ; }
+lidtoggle(){
+	if pid="$(lidpid)"; then
+		kill -- -"$pid" && notify-send "🦉 Sleepless lid off" "Closing the lid suspends again."
+	else
+		setsid -f systemd-inhibit --what=handle-lid-switch --who=sysact --why="$lidtag" --mode=block sleep infinity
+		notify-send "🦉 Sleepless lid on" "Closing the lid keeps the machine up. Blank the display first."
+	fi
+}
+
+case "$(printf "🔒 lock\n🚪 leave $WM\n♻️ renew $WM\n🐻 hibernate\n🔃 reboot\n🖥️shutdown\n💤 sleep\n📺 display off\n🦉 sleepless lid: $(lidstate)" | dmenu -i -p 'Action: ')" in
 	'🔒 lock') lock ;;
 	"🚪 leave $WM") kill -TERM "$(wmpid)" ;;
 	"♻️ renew $WM") kill -HUP "$(wmpid)" ;;
@@ -31,5 +50,6 @@ case "$(printf "🔒 lock\n🚪 leave $WM\n♻️ renew $WM\n🐻 hibernate\n�
 	'🔃 reboot') $ctl reboot -i ;;
 	'🖥️shutdown') $ctl poweroff -i ;;
 	'📺 display off') xset dpms force off ;;
+	'🦉 sleepless lid: '*) lidtoggle ;;
 	*) exit 1 ;;
 esac
