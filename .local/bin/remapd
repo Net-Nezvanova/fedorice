@@ -1,8 +1,12 @@
 #!/bin/bash
 
 # Rerun the remaps script whenever a new input device is added.
+# USB devices announce themselves with a bind event. Virtual ones (Sunshine's
+# uinput keyboard) only send an add event, and X needs a moment to pick the
+# device up, hence the sleep.
 
 while :; do
 	remaps
-	grep -qP -m1 '[^un]bind.+\/[^:]+\(usb\)' <(udevadm monitor -u -t seat -s input -s usb)
+	grep -qP -m1 '[^un]bind.+\/[^:]+\(usb\)|add\s+\/devices\/virtual\/input\/input\d+ \(input\)' <(udevadm monitor -u -t seat -s input -s usb)
+	sleep 1
 done
