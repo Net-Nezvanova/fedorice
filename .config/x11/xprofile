@@ -40,6 +40,13 @@ dpi="$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/x11/dpi" 2>/dev/null || echo 96)"
 xrandr --dpi "$dpi"
 printf 'Xft.dpi: %s\n' "$dpi" | xrdb -merge -
 setbg & setbgpid=$!	# set the background with the `setbg` script
+
+# Blank the panel after ten idle minutes. These are the X server's own
+# defaults, pinned so the behaviour is on record and survives anything that
+# resets it. It is what turns the backlight off under a closed lid when the
+# machine is left up for remote use (see sysact's sleepless lid); mpv and the
+# browser hold their own inhibit while playing.
+xset s 600 600 dpms 600 600 600
 #xrdb ${XDG_CONFIG_HOME:-$HOME/.config}/x11/xresources & xrdbpid=$!	# Uncomment to use Xresources colors/settings on startup
 
 # pipewire is deliberately absent from this list. On Fedora it is socket-
